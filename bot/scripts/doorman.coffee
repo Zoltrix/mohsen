@@ -9,7 +9,8 @@
 #   These are from the scripting documentation: https://github.com/github/hubot/blob/master/docs/scripting.md
 
 module.exports = (robot) ->
-  robot.respond /door/i, (res) ->
+  robot.respond /door (pls|please|plz)/i, (res) ->
+    console.log "TEST"
     robot.http("http://192.168.1.199")
           .get() (err, response, body) ->
             res.reply "Done ya kbeer el m3lmeen :D"
