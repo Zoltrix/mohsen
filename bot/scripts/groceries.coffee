@@ -1,7 +1,6 @@
 
 module.exports = (robot) ->
   robot.respond /(?:pls|please|plz)? (?:order|add) (.*)/i, (res) ->
-    console.log res.match
     yaml = require 'yaml-js'
     fs = require 'fs'
     my_list = robot.brain.get("my_list")
@@ -45,6 +44,7 @@ module.exports = (robot) ->
       "PaymentMethod": "CashOnDelivery",
       "WarehouseId": 1,
       "EnterpriseDiscount": null,
+      "UserId": process.env.KNOCKMART_USERID or "",
       "Items": ({"Id": i["id"], "Qty": i["count"], "Coupon": null} for k, i of cart)
     })
     robot.http("http://knockmart.com/Home/Order")
