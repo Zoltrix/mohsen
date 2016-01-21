@@ -1,36 +1,38 @@
-# Description:
-#   Example scripts for you to examine and try out.
-#
-# Notes:
-#   They are commented out by default, because most of them are pretty silly and
-#   wouldn't be useful and amusing enough for day to day huboting.
-#   Uncomment the ones you want to try and experiment with.
-#
-#   These are from the scripting documentation: https://github.com/github/hubot/blob/master/docs/scripting.md
-
-
 
 module.exports = (robot) ->
-  robot.respond /(pls|please|plz) order (.*)/i, (res) ->
-    robot.brain.set('milk', {id: '26007', count: '4'})
-    robot.brain.set('cheddar cheese', {id: '25713', count: '1'})
-    robot.brain.set('mix strawberry', {id: '19555', count: '4'})
-    robot.brain.set('milk toast', {id: '17120', count: '1'})
-
+  robot.respond /(?:pls|please|plz)? (?:order|add) (.*)/i, (res) ->
+    console.log res.match
+    yaml = require 'yaml-js'
+    fs = require 'fs'
+    my_list = robot.brain.get("my_list")
+    if my_list == null
+      my_list = yaml.load(fs.readFileSync('../list.yml').toString())
+      robot.brain.set("my_list", my_list)
     id_to_name = {}
-    cart = res.match[2].split(/\s*(?:,|and)\s*/).map (i) -> id_to_name[robot.brain.get(i)["id"]] = i; robot.brain.get(i)
-    robot.brain.set('cart', cart)
+    for k, v of my_list
+      id_to_name[v["id"]] = k
+    items = res.match[1].split(/\s*(?:,|and)\s*/).map (i) -> my_list[i]
     data = JSON.stringify({
          "WarehouseId": 1, 
-         "Items": cart.map (i) -> {"ID": i["id"]}
+         "Items": items.map (i) -> {"ID": i["id"]}
     })
     robot.http("http://knockmart.com/Home/CheckAvailability")
       .header('Content-Type', 'application/json;charset=UTF-8')
       .header("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.101 Safari/537.36")
       .post(data) (err, res2, body) ->
-        out = JSON.parse(body)["Items"].filter (i) -> i["IsOutOfStock"]
-        console.log body
-        res.reply if out.length == 0 then "Ready to order? just say the magic words \"Place order!\"" else "Wait, something's missing: #{out.map (i) -> id_to_name[i["ID"]]}. The rest is ready, just say the magic words \"Place order!\""
+        body = JSON.parse(body)
+        out = body["Items"].filter (i) -> i["IsOutOfStock"]
+        avail = body["Items"].filter (i) -> !i["IsOutOfStock"]
+        cart = robot.brain.get('cart', cart) or {}
+        for i in avail
+          name = id_to_name[i["ID"]]
+          if cart[name]
+            cart[name]["count"] += my_list[name]["count"]
+          else
+            cart[name] = my_list[name]
+        robot.brain.set('cart', cart)
+        cart_str = ("  #{i["count"]} x #{i["name"]}" for k, i of cart).join("\n")
+        res.reply if out.length == 0 then "\n#{cart_str}\nReady to order? just say the magic words \"Place order!\"" else "\n#{cart_str}\nWait, something's missing: #{out.map (i) -> id_to_name[i["ID"]]}. The rest is ready, just say the magic words \"Place order!\""
         return
 
   robot.respond /place order/i, (res) ->
@@ -43,11 +45,11 @@ module.exports = (robot) ->
       "PaymentMethod": "CashOnDelivery",
       "WarehouseId": 1,
       "EnterpriseDiscount": null,
-      "Items": cart.map (i) -> {"Id": i["id"], "Qty": i["count"], "Coupon": null}
+      "Items": ({"Id": i["id"], "Qty": i["count"], "Coupon": null} for k, i of cart)
     })
     robot.http("http://knockmart.com/Home/Order")
       .header('Content-Type', 'application/json;charset=UTF-8')
       .header("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.101 Safari/537.36")
       .post(data) (err, res2, body) ->
-        res.reply if res2["statusCode"] == 200 then "Sweet! The order should be on the way now, sit tight!" else "Hmm, this didn't go as planned."
+        res.reply if res2["statusCode"] == 200 then "Done! The order should be on the way now, sit tight!" else "Hmm, this didn't go as planned."
         return
