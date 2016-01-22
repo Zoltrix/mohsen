@@ -1,16 +1,56 @@
+# Description:
+#   For ordering groceries
+##
+# Configuration:
+#   KNOCKMART_USERID
+#
+# Commands:
+#   please (order|add) <groceries> - adds the groceries to cart if they are in stock
+#   place order - places an order with the groceries currently in the cart
+#   show cart - shows the items currently in the groceries cart
+#   show list - shows all items in the full groceries list
+#   (clear|empty) cart - clears the groceries cart
+#
+# Notes:
+#   Places an order on knockmart
+#
+# Author:
+#   matefh
+
+yaml = require 'yaml-js'
+fs = require 'fs'
+
+print = (x) -> console.log x
+
+load_list = (robot) ->
+  my_list = robot.brain.get("my_list")
+  if my_list == null
+    my_list = yaml.load(fs.readFileSync('../list.yml').toString())
+    robot.brain.set("my_list", my_list)
+  return my_list
 
 module.exports = (robot) ->
+  robot.respond /(show|groceries)* list/i, (res) ->
+    my_list = load_list(robot)
+    strs = []
+    for k, i of my_list
+      strs = strs.concat(["#{k} = #{i["count"]} x #{i["name"]}"])
+    res.reply "\n" + strs.sort().join("\n")
+
+  robot.respond /(show|groceries)* cart/i, (res) ->
+    cart = robot.brain.get('cart') or {}
+    res.reply if Object.keys(cart).length > 0 then ("\n" + "  #{i["count"]} x #{i["name"]}" for k, i of cart).join("\n") else "The cart is still empty though."
+
+  robot.respond /(clear|empty)* cart/i, (res) ->
+    robot.brain.set('cart', {})
+    res.reply "This conversation never happened."
+
   robot.respond /(?:pls|please|plz)? (?:order|add) (.*)/i, (res) ->
-    yaml = require 'yaml-js'
-    fs = require 'fs'
-    my_list = robot.brain.get("my_list")
-    if my_list == null
-      my_list = yaml.load(fs.readFileSync('../list.yml').toString())
-      robot.brain.set("my_list", my_list)
+    my_list = load_list(robot)
     id_to_name = {}
     for k, v of my_list
       id_to_name[v["id"]] = k
-    items = res.match[1].split(/\s*(?:,|and)\s*/).map (i) -> my_list[i]
+    items = res.match[1].toLowerCase().split(/\s*(?:,|and)\s*/).map (i) -> my_list[i]
     data = JSON.stringify({
          "WarehouseId": 1, 
          "Items": items.map (i) -> {"ID": i["id"]}
@@ -26,9 +66,15 @@ module.exports = (robot) ->
         for i in avail
           name = id_to_name[i["ID"]]
           if cart[name]
+            print cart[name]["count"]
+            print my_list[name]["count"]
             cart[name]["count"] += my_list[name]["count"]
           else
-            cart[name] = my_list[name]
+            cart[name] = {
+              id: my_list[name]["id"],
+              name: my_list[name]["name"],
+              count: my_list[name]["count"]
+            }
         robot.brain.set('cart', cart)
         cart_str = ("  #{i["count"]} x #{i["name"]}" for k, i of cart).join("\n")
         res.reply if out.length == 0 then "\n#{cart_str}\nReady to order? just say the magic words \"Place order!\"" else "\n#{cart_str}\nWait, something's missing: #{out.map (i) -> id_to_name[i["ID"]]}. The rest is ready, just say the magic words \"Place order!\""
