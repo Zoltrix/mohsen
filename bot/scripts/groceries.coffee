@@ -22,24 +22,31 @@ fs = require 'fs'
 
 print = (x) -> console.log x
 
+refresh_list = (robot) ->
+  my_list = yaml.load(fs.readFileSync('../list.yml').toString())
+  robot.brain.set('my_list', my_list)
+  return my_list
+
 load_list = (robot) ->
   my_list = robot.brain.get("my_list")
   if my_list == null
-    my_list = yaml.load(fs.readFileSync('../list.yml').toString())
-    robot.brain.set("my_list", my_list)
+    my_list = refresh_list(robot)
   return my_list
+
+show_list = (list) ->
+  strs = []
+  for k, i of list
+    strs = strs.concat(["#{k} = #{i["count"]} x #{i["name"]}"])
+  return "\n" + strs.sort().join("\n")
+
 
 module.exports = (robot) ->
   robot.respond /(show|groceries)* list/i, (res) ->
-    my_list = load_list(robot)
-    strs = []
-    for k, i of my_list
-      strs = strs.concat(["#{k} = #{i["count"]} x #{i["name"]}"])
-    res.reply "\n" + strs.sort().join("\n")
+    res.reply show_list(refresh_list(robot))
 
   robot.respond /(show|groceries)* cart/i, (res) ->
     cart = robot.brain.get('cart') or {}
-    res.reply if Object.keys(cart).length > 0 then ("\n" + "  #{i["count"]} x #{i["name"]}" for k, i of cart).join("\n") else "The cart is still empty though."
+    res.reply if Object.keys(cart).length > 0 then "\n" + ("  #{i["count"]} x #{i["name"]}" for k, i of cart).join("\n") else "The cart is still empty though."
 
   robot.respond /(clear|empty)* cart/i, (res) ->
     robot.brain.set('cart', {})
@@ -51,10 +58,14 @@ module.exports = (robot) ->
     for k, v of my_list
       id_to_name[v["id"]] = k
     items = res.match[1].toLowerCase().split(/\s*(?:,|and)\s*/).map (i) -> my_list[i]
+    items = items.filter (i) -> i
     data = JSON.stringify({
-         "WarehouseId": 1, 
+         "WarehouseId": 1,
          "Items": items.map (i) -> {"ID": i["id"]}
     })
+    if items.length == 0
+      res.reply "What was that? Are you sure its in my list?" + "\n" + show_list(load_list(robot))
+      return
     robot.http("http://knockmart.com/Home/CheckAvailability")
       .header('Content-Type', 'application/json;charset=UTF-8')
       .header("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.101 Safari/537.36")
@@ -66,8 +77,6 @@ module.exports = (robot) ->
         for i in avail
           name = id_to_name[i["ID"]]
           if cart[name]
-            print cart[name]["count"]
-            print my_list[name]["count"]
             cart[name]["count"] += my_list[name]["count"]
           else
             cart[name] = {
