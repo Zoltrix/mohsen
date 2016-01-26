@@ -57,8 +57,18 @@ module.exports = (robot) ->
     id_to_name = {}
     for k, v of my_list
       id_to_name[v["id"]] = k
-    items = res.match[1].toLowerCase().split(/\s*(?:,|and)\s*/).map (i) -> my_list[i]
+
+    items = res.match[1].toLowerCase().split(/\s*(?:,|and| )\s*/)
+    keys = Object.keys(my_list)
+    
+    #'everything except' command handling
+    if items[0] == 'everything' && items[1] == 'except'
+      items.splice(0, 2)
+      items = keys.filter (k) -> items.indexOf(k) == -1
+
+    items = items.map (i) -> my_list[i]
     items = items.filter (i) -> i
+
     data = JSON.stringify({
          "WarehouseId": 1,
          "Items": items.map (i) -> {"ID": i["id"]}
@@ -88,6 +98,7 @@ module.exports = (robot) ->
         cart_str = ("  #{i["count"]} x #{i["name"]}" for k, i of cart).join("\n")
         res.reply if out.length == 0 then "\n#{cart_str}\nReady to order? just say the magic words \"Place order!\"" else "\n#{cart_str}\nWait, something's missing: #{out.map (i) -> id_to_name[i["ID"]]}. The rest is ready, just say the magic words \"Place order!\""
         return
+
 
   robot.respond /place order/i, (res) ->
     cart = robot.brain.get('cart')
