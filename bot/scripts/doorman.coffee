@@ -10,8 +10,7 @@
 
 module.exports = (robot) ->
   robot.respond /door (pls|please|plz)/i, (res) ->
-    console.log "TEST"
-    robot.http("http://192.168.1.199")
+    robot.http("http://192.168.1.199:8080")
           .get() (err, response, body) ->
             res.reply "Done ya kbeer el m3lmeen :D"
             return
