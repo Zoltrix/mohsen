@@ -53,7 +53,7 @@ module.exports = (robot) ->
     robot.brain.set('cart', {})
     res.reply "This conversation never happened."
 
-  robot.respond /(?:pls|please|plz)? (?:order|add) (.*)/i, (res) ->
+  robot.respond /(?:pls|please|plz)? ?(?:order|add) (.*)/i, (res) ->
     my_list = load_list(robot)
     id_to_name = {}
     for k, v of my_list
