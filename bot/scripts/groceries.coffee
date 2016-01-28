@@ -40,6 +40,49 @@ show_list = (list) ->
     strs = strs.concat(["#{k} = #{i["count"]} x #{i["name"]}"])
   return "\n" + strs.sort().join("\n")
 
+ids_to_names = (my_list) ->
+  id_to_name = {}
+  for k, v of my_list
+    id_to_name[v["id"]] = k
+  return id_to_name
+
+order_sentence_to_items = (sentence, my_list, invert=false) ->
+  items = sentence.toLowerCase().split(/\s*(?:,|and)\s*/)
+  if invert
+    keys = Object.keys(my_list)
+    items = keys.filter (k) -> items.indexOf(k) < 0
+  items = items.map (i) -> my_list[i]
+  items = items.filter (i) -> i
+  return items
+
+add_order = (robot, res, items, my_list) ->
+  id_to_name = ids_to_names(my_list)
+  data = JSON.stringify({
+    "WarehouseId": 1,
+    "Items": items.map (i) -> {"ID": i["id"]}
+  })
+  robot.http("http://knockmart.com/Home/CheckAvailability")
+    .header('Content-Type', 'application/json;charset=UTF-8')
+    .header("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.101 Safari/537.36")
+    .post(data) (err, res2, body) ->
+      body = JSON.parse(body)
+      out = body["Items"].filter (i) -> i["IsOutOfStock"]
+      avail = body["Items"].filter (i) -> !i["IsOutOfStock"]
+      cart = robot.brain.get('cart', cart) or {}
+      for i in avail
+        name = id_to_name[i["ID"]]
+        if cart[name]
+          cart[name]["count"] += my_list[name]["count"]
+        else
+          cart[name] = {
+            id: my_list[name]["id"],
+            name: my_list[name]["name"],
+            count: my_list[name]["count"]
+          }
+      robot.brain.set('cart', cart)
+      cart_str = ("  #{i["count"]} x #{i["name"]}" for k, i of cart).join("\n")
+      res.reply if out.length == 0 then "\n#{cart_str}\nReady to order? just say the magic words \"Place order!\"" else "\n#{cart_str}\nWait, something's out of stock: #{(out.map (i) -> id_to_name[i["ID"]]).join(", ")}. The rest is ready, just say the magic words \"Place order!\""
+      return
 
 module.exports = (robot) ->
   robot.respond /(show|groceries)* list/i, (res) ->
@@ -53,53 +96,23 @@ module.exports = (robot) ->
     robot.brain.set('cart', {})
     res.reply "This conversation never happened."
 
-  robot.respond /(?:pls|please|plz)? ?(?:order|add) (.*)/i, (res) ->
+  robot.respond /(?:pls|please|plz)?\s*(?:order|add)\s+everything\s+except\s+(.*)/i, (res) ->
     my_list = load_list(robot)
-    id_to_name = {}
-    for k, v of my_list
-      id_to_name[v["id"]] = k
-
-    items = res.match[1].toLowerCase().split(/\s*(?:,|and| )\s*/)
-    keys = Object.keys(my_list)
-    
-    #'everything except' command handling
-    if items[0] == 'everything' && items[1] == 'except'
-      items.splice(0, 2)
-      items = keys.filter (k) -> items.indexOf(k) == -1
-
-    items = items.map (i) -> my_list[i]
-    items = items.filter (i) -> i
-
-    data = JSON.stringify({
-         "WarehouseId": 1,
-         "Items": items.map (i) -> {"ID": i["id"]}
-    })
+    order_sentence = res.match[1]
+    items = order_sentence_to_items(order_sentence, my_list, true)
     if items.length == 0
       res.reply "What was that? Are you sure its in my list?" + "\n" + show_list(load_list(robot))
       return
-    robot.http("http://knockmart.com/Home/CheckAvailability")
-      .header('Content-Type', 'application/json;charset=UTF-8')
-      .header("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.101 Safari/537.36")
-      .post(data) (err, res2, body) ->
-        body = JSON.parse(body)
-        out = body["Items"].filter (i) -> i["IsOutOfStock"]
-        avail = body["Items"].filter (i) -> !i["IsOutOfStock"]
-        cart = robot.brain.get('cart', cart) or {}
-        for i in avail
-          name = id_to_name[i["ID"]]
-          if cart[name]
-            cart[name]["count"] += my_list[name]["count"]
-          else
-            cart[name] = {
-              id: my_list[name]["id"],
-              name: my_list[name]["name"],
-              count: my_list[name]["count"]
-            }
-        robot.brain.set('cart', cart)
-        cart_str = ("  #{i["count"]} x #{i["name"]}" for k, i of cart).join("\n")
-        res.reply if out.length == 0 then "\n#{cart_str}\nReady to order? just say the magic words \"Place order!\"" else "\n#{cart_str}\nWait, something's missing: #{out.map (i) -> id_to_name[i["ID"]]}. The rest is ready, just say the magic words \"Place order!\""
-        return
-
+    add_order(robot, res, items, my_list)
+    
+  robot.respond /(?:pls|please|plz)?\s*(?:order|add)\s+(?!everything except)\s*(.*)/i, (res) ->
+    my_list = load_list(robot)
+    order_sentence = res.match[1]
+    items = order_sentence_to_items(order_sentence, my_list)
+    if items.length == 0
+      res.reply "What was that? Are you sure its in my list?" + "\n" + show_list(load_list(robot))
+      return
+    add_order(robot, res, items, my_list)
 
   robot.respond /place order/i, (res) ->
     cart = robot.brain.get('cart')
