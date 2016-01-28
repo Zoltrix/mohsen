@@ -6,6 +6,7 @@
 #
 # Commands:
 #   please (order|add) <groceries> - adds the groceries to cart if they are in stock
+#   please (order|add) everything except <excluded-groceries> - adds everything except what is mentioned
 #   place order - places an order with the groceries currently in the cart
 #   show cart - shows the items currently in the groceries cart
 #   show list - shows all items in the full groceries list
