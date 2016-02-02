@@ -10,8 +10,15 @@
 
 module.exports = (robot) ->
   robot.respond /door (pls|please|plz)/i, (res) ->
+
+    reply_msg = "Done ya kbeer el m3lmeen :D"
+
+    #is this trolling ?
+    if res.user.name == "ekoshairy"
+        reply_msg = "Done ya kbeeret el m3lmeen :D"
+
     robot.http("http://192.168.1.199:8080")
           .get() (err, response, body) ->
-            res.reply "Done ya kbeer el m3lmeen :D"
+            res.reply reply_msg
             return
 
